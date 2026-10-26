@@ -14,8 +14,7 @@
     "db:migrate": "prisma migrate dev",
     "predb:deploy": "node scripts/ensure-database.mjs",
     "db:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio",
-    "task2:pdf": "node scripts/generate-task-2.mjs"
+    "db:studio": "prisma studio"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "7.10.1",
@@ -40,7 +39,6 @@
     "@types/react-dom": "^19.2.2",
     "eslint": "^9.39.0",
     "eslint-config-next": "16.4.3",
-    "pdfkit": "^0.20.2",
     "prisma": "7.10.1",
     "tailwindcss": "^4.1.14",
     "typescript": "^5.9.3"

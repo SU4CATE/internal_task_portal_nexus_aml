@@ -102,8 +102,6 @@ Task statuses are deliberately limited to **To do**, **In progress**, and **Comp
 
 ## Part 2 design deliverables
 
-- [`Task_2.pdf`](./Task_2.pdf) is the required review artifact containing the process-flow map and sprint implementation plan.
-- [`Task_2.md`](./Task_2.md) is the editable source and renders its Mermaid workflow directly in GitHub.
-- Run `npm run task2:pdf` after editing the source to regenerate the PDF.
+- [`Task_2.pdf`](./docs/Task_2.pdf) is the required review artifact containing the process-flow map and sprint implementation plan.
 
 The application implements **Part 1**. Part 2 is intentionally a design and planning deliverable only; its workflow is not implemented in the application.

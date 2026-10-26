@@ -10,4 +10,8 @@ npm-debug.log*
 .DS_Store
 
 # Keep the supplied assessment brief out of the public solution repository.
-docs/
+docs/*
+!docs/Task_2.pdf
+
+# Local Task 2 sources and print files.
+task 2/

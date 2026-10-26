@@ -50,6 +50,8 @@ The project uses the Next.js App Router. Pages render on the server where possib
 
 The initial task list is server-rendered. Subsequent creates and updates use the API and update local UI state, which keeps interactions quick without introducing a client data-fetching library for this project size.
 
+For Part 1, tasks are private to their creator because team membership, assignment, roles, and cross-user visibility are not defined until Part 2. This is an explicit scope and security decision rather than an assumption that task IDs alone provide isolation.
+
 ### Data storage
 
 SQLite was selected because the brief permits any storage approach and the assessment should run with minimal setup. Prisma ORM provides the application-facing data layer: model definitions, generated types, relationship handling, and a clear migration history. Prisma 7's official SQLite adapter supplies the low-level connection, but application code does not access the database driver directly.
@@ -98,6 +100,10 @@ Task statuses are deliberately limited to **To do**, **In progress**, and **Comp
 | `PATCH` | `/api/tasks/:taskId` | Edit a task or change its status |
 | `DELETE` | `/api/tasks/:taskId` | Delete a task |
 
-## Scope
+## Part 2 design deliverables
 
-This repository currently implements **Part 1** of the assignment. The Part 2 process flow and sprint implementation plan are intentionally not included yet.
+- [`Task_2.pdf`](./Task_2.pdf) is the required review artifact containing the process-flow map and sprint implementation plan.
+- [`Task_2.md`](./Task_2.md) is the editable source and renders its Mermaid workflow directly in GitHub.
+- Run `npm run task2:pdf` after editing the source to regenerate the PDF.
+
+The application implements **Part 1**. Part 2 is intentionally a design and planning deliverable only; its workflow is not implemented in the application.

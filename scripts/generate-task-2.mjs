@@ -32,7 +32,7 @@ const doc = new PDFDocument({
   margins: { top: 62, right: 58, bottom: 58, left: 58 },
   bufferPages: true,
   info: {
-    Title: "Task 2 — Next Iteration Design",
+    Title: "Task 2: Next Iteration Design",
     Author: "Nexus AML Internal Task Portal",
     Subject: "Process flow and sprint implementation plan",
   },
@@ -40,6 +40,9 @@ const doc = new PDFDocument({
 
 const output = fs.createWriteStream(outputPath);
 doc.pipe(output);
+
+const sectionPages = new Map();
+let activeSubtopic = null;
 
 function cleanInline(value) {
   return value
@@ -74,27 +77,78 @@ function heading(text, level) {
   if (process.env.DEBUG_PDF) {
     console.log(`page ${doc.bufferedPageRange().count}: ${text}`);
   }
-  const sizes = { 2: 17, 3: 12.5, 4: 10.5 };
-  const topSpace = level === 2 ? 18 : 11;
-  ensureSpace(level === 2 ? 54 : 36);
-  doc.moveDown(topSpace / 12);
-  doc.font("Helvetica-Bold").fontSize(sizes[level] ?? 10.5).fillColor(level === 2 ? colors.navy : colors.blue).text(cleanInline(text), {
-    lineGap: 2,
-  });
+  const value = cleanInline(text);
+  activeSubtopic = null;
+
   if (level === 2) {
+    sectionPages.set(value, doc.bufferedPageRange().count);
+    ensureSpace(76);
+    doc.moveDown(1.2);
+    doc.font("Helvetica-Bold").fontSize(18).fillColor(colors.navy).text(value, { lineGap: 2 });
     const y = doc.y + 5;
     doc.moveTo(doc.page.margins.left, y).lineTo(doc.page.width - doc.page.margins.right, y).strokeColor(colors.line).lineWidth(0.7).stroke();
     doc.y = y + 10;
-  } else {
-    doc.moveDown(0.35);
+    return;
   }
+
+  if (level === 3) {
+    ensureSpace(52);
+    doc.moveDown(0.75);
+    const y = doc.y;
+    doc.roundedRect(doc.page.margins.left, y + 1, 4, 20, 2).fill(colors.blue);
+    doc.font("Helvetica-Bold").fontSize(13).fillColor(colors.navy).text(value, doc.page.margins.left + 14, y, {
+      width: doc.page.width - doc.page.margins.left - doc.page.margins.right - 14,
+      lineGap: 2,
+    });
+    doc.moveDown(0.45);
+    return;
+  }
+
+  doc.font("Helvetica-Bold").fontSize(10.5);
+  const width = doc.page.width - doc.page.margins.left - doc.page.margins.right - 20;
+  const textHeight = doc.heightOfString(value, { width, lineGap: 2 });
+  const boxHeight = Math.max(30, textHeight + 14);
+  ensureSpace(boxHeight + 56);
+  doc.moveDown(0.6);
+  const y = doc.y;
+  doc.roundedRect(doc.page.margins.left, y, width + 20, boxHeight, 6).fill(colors.blueSoft);
+  doc.fillColor(colors.navy).text(value, doc.page.margins.left + 10, y + 7, { width, lineGap: 2 });
+  doc.y = y + boxHeight + 9;
 }
 
 function bullet(text, ordered = false, index = "") {
   const marker = ordered ? `${index}.` : "•";
-  const left = doc.page.margins.left;
+  const indent = activeSubtopic ? 20 : 0;
+  const left = doc.page.margins.left + indent;
   const markerWidth = 18;
   const contentWidth = doc.page.width - doc.page.margins.right - left - markerWidth;
+  const apiMatch = text.match(/^`([^`]+)`:\s*(.*)$/);
+
+  if (apiMatch) {
+    const [, endpoint, description] = apiMatch;
+    doc.font("Courier-Bold").fontSize(8.2);
+    const badgeWidth = Math.min(doc.widthOfString(endpoint) + 14, contentWidth - 120);
+    const descriptionX = left + markerWidth + badgeWidth + 9;
+    const descriptionWidth = doc.page.width - doc.page.margins.right - descriptionX;
+    doc.font("Helvetica").fontSize(9.3);
+    const descriptionHeight = doc.heightOfString(description, { width: descriptionWidth, lineGap: 2.5 });
+    const height = Math.max(18, descriptionHeight);
+    ensureSpace(height + 8);
+    const y = doc.y;
+    doc.font("Helvetica-Bold").fontSize(9.3).fillColor(colors.blue).text(marker, left, y + 1, { width: markerWidth });
+    doc.roundedRect(left + markerWidth, y - 2, badgeWidth, 18, 4).fill("#e2e8f0");
+    doc.font("Courier-Bold").fontSize(8.2).fillColor(colors.navy).text(endpoint, left + markerWidth + 7, y + 2, {
+      width: badgeWidth - 14,
+      lineBreak: false,
+    });
+    doc.font("Helvetica").fontSize(9.3).fillColor(colors.ink).text(description, descriptionX, y, {
+      width: descriptionWidth,
+      lineGap: 2.5,
+    });
+    doc.y = y + height + 7;
+    return;
+  }
+
   const value = cleanInline(text);
   doc.font("Helvetica").fontSize(9.3);
   const height = doc.heightOfString(value, { width: contentWidth, lineGap: 2.5 });
@@ -103,6 +157,82 @@ function bullet(text, ordered = false, index = "") {
   doc.font("Helvetica-Bold").fontSize(9.3).fillColor(colors.blue).text(marker, left, y, { width: markerWidth });
   doc.font("Helvetica").fontSize(9.3).fillColor(colors.ink).text(value, left + markerWidth, y, { width: contentWidth, lineGap: 2.5 });
   doc.y = Math.max(doc.y, y + height) + 5;
+}
+
+function subtopic(text) {
+  ensureSpace(26);
+  activeSubtopic = cleanInline(text);
+  const x = doc.page.margins.left + 16;
+  const y = doc.y + 2;
+  doc.roundedRect(x, y + 1, 3, 13, 1.5).fill(colors.blue);
+  doc.font("Helvetica-Bold").fontSize(9.5).fillColor(colors.navy).text(activeSubtopic, x + 10, y, {
+    lineBreak: false,
+  });
+  doc.y = y + 21;
+}
+
+function callout(labelText, bodyText) {
+  const label = cleanInline(labelText);
+  const body = cleanInline(bodyText);
+  const x = doc.page.margins.left;
+  const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  doc.font("Helvetica").fontSize(9.5);
+  const bodyHeight = doc.heightOfString(body, { width: width - 82, lineGap: 2 });
+  const height = Math.max(34, bodyHeight + 16);
+  ensureSpace(height + 8);
+  const y = doc.y;
+  doc.roundedRect(x, y, width, height, 6).fill("#f1f5f9");
+  doc.font("Helvetica-Bold").fontSize(9).fillColor(colors.blue).text(label.toUpperCase(), x + 12, y + 11, {
+    width: 60,
+    lineBreak: false,
+  });
+  doc.font("Helvetica").fontSize(9.5).fillColor(colors.ink).text(body, x + 76, y + 9, {
+    width: width - 88,
+    lineGap: 2,
+  });
+  doc.y = y + height + 9;
+}
+
+function drawContents(pageIndex) {
+  doc.switchToPage(pageIndex);
+  doc.font("Helvetica-Bold").fontSize(27).fillColor(colors.navy).text("Contents", 58, 70);
+  doc.font("Helvetica").fontSize(10).fillColor(colors.muted).text("Process design, delivery plan, dependencies, and release controls", 58, 108);
+
+  const sections = [
+    "1. Scope and working assumptions",
+    "2. Process flow map",
+    "3. Proposed solution shape",
+    "4. Sprint implementation plan",
+    "5. Dependency sequence and critical path",
+    "6. Risks and mitigations",
+    "7. Definition of done",
+  ];
+
+  let y = 164;
+  for (const [index, title] of sections.entries()) {
+    const page = sectionPages.get(title) ?? "";
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(colors.blue).text(String(index + 1).padStart(2, "0"), 58, y, {
+      width: 28,
+      lineBreak: false,
+    });
+    doc.font("Helvetica-Bold").fontSize(11).fillColor(colors.ink).text(title.replace(/^\d+\.\s/, ""), 96, y - 2, {
+      width: 360,
+      lineBreak: false,
+    });
+    doc.moveTo(96, y + 22).lineTo(500, y + 22).strokeColor("#e2e8f0").lineWidth(0.6).stroke();
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(colors.muted).text(String(page), 506, y - 1, {
+      width: 30,
+      align: "right",
+      lineBreak: false,
+    });
+    y += 70;
+  }
+
+  doc.roundedRect(58, 692, 478, 68, 8).fill("#f1f5f9");
+  doc.font("Helvetica-Bold").fontSize(9).fillColor(colors.navy).text("DELIVERY VIEW", 74, 710);
+  doc.font("Helvetica").fontSize(9).fillColor(colors.muted).text("Sprint 1 establishes shared work and task details. Sprint 2 adds secure evidence and approval.", 74, 730, {
+    width: 440,
+  });
 }
 
 function arrow(x1, y1, x2, y2, color = colors.muted) {
@@ -140,13 +270,29 @@ function diamond(cx, cy, width, height, label, fill = colors.amberSoft, stroke =
   });
 }
 
+function inputBox(x, y, width, height, text) {
+  const inset = 12;
+  doc
+    .moveTo(x + inset, y)
+    .lineTo(x + width, y)
+    .lineTo(x + width - inset, y + height)
+    .lineTo(x, y + height)
+    .closePath()
+    .fillAndStroke(colors.paper, colors.line);
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(colors.ink).text(text, x + 12, y + height / 2 - 5, {
+    width: width - 24,
+    align: "center",
+  });
+}
+
 function label(text, x, y, color = colors.muted) {
   doc.font("Helvetica-Bold").fontSize(7.5).fillColor(color).text(text, x, y, { lineBreak: false });
 }
 
 function drawFlowDiagram() {
   doc.addPage({ size: "A4", layout: "landscape", margins: { top: 42, right: 36, bottom: 42, left: 36 } });
-  doc.font("Helvetica-Bold").fontSize(18).fillColor(colors.navy).text("Process flow: creation to approved completion", 36, 38);
+  sectionPages.set("2. Process flow map", doc.bufferedPageRange().count);
+  doc.font("Helvetica-Bold").fontSize(18).fillColor(colors.navy).text("2. Process flow map", 36, 38);
   doc.font("Helvetica").fontSize(8.5).fillColor(colors.muted).text("Solid arrows show the primary path. Side paths show recovery, rejection, blocking, and cancellation.", 36, 64);
 
   const cx = 421;
@@ -157,7 +303,7 @@ function drawFlowDiagram() {
   box(cx - w / 2, ys[0], w, h, "Task created", colors.blueSoft, colors.blue, 15);
   box(cx - w / 2, ys[1], w, h, "Assign active user");
   box(cx - w / 2, ys[2], w, h, "Assignee works", colors.blueSoft, colors.blue);
-  box(cx - w / 2, ys[3], w, h, "Upload evidence");
+  inputBox(cx - w / 2, ys[3], w, h, "Upload evidence");
   diamond(cx, ys[4] + 15, 176, 44, "File valid and stored?");
   box(cx - w / 2, ys[5], w, h, "Pending review", colors.violetSoft, colors.violet);
   box(cx - w / 2, ys[6], w, h, "Admin reviews evidence", colors.violetSoft, colors.violet);
@@ -215,6 +361,8 @@ doc.font("Helvetica-Bold").fontSize(10).fillColor("#ffffff").text("Assignment ·
 doc.font("Helvetica").fontSize(9).fillColor("#64748b").text("Prepared as the Part 2 design deliverable", 58, 730);
 
 addPortraitPage();
+const contentsPageIndex = 1;
+addPortraitPage();
 
 const lines = markdown.split(/\r?\n/);
 let inMermaid = false;
@@ -253,7 +401,25 @@ for (const rawLine of lines) {
     continue;
   }
   if (line.startsWith("## ")) {
-    heading(line.slice(3), 2);
+    const title = line.slice(3);
+    if (title.startsWith("2. ")) {
+      activeSubtopic = null;
+      continue;
+    }
+    if ((title.startsWith("4. ") || title.startsWith("5. ")) && doc.y > doc.page.margins.top + 40) {
+      addPortraitPage();
+    }
+    heading(title, 2);
+    continue;
+  }
+  const subtopicMatch = line.match(/^\*\*([^*]+)\*\*$/);
+  if (subtopicMatch) {
+    subtopic(subtopicMatch[1]);
+    continue;
+  }
+  const calloutMatch = line.match(/^\*\*([^*]+):\*\*\s*(.+)$/);
+  if (calloutMatch) {
+    callout(calloutMatch[1], calloutMatch[2]);
     continue;
   }
   if (/^\d+\.\s/.test(line)) {
@@ -268,6 +434,8 @@ for (const rawLine of lines) {
   paragraph(line);
 }
 
+drawContents(contentsPageIndex);
+
 const pageRange = doc.bufferedPageRange();
 for (let index = pageRange.start; index < pageRange.start + pageRange.count; index += 1) {
   doc.switchToPage(index);
@@ -277,7 +445,7 @@ for (let index = pageRange.start; index < pageRange.start + pageRange.count; ind
   doc.page.margins.bottom = 0;
   doc.moveTo(36, 28).lineTo(pageWidth - 36, 28).strokeColor(colors.line).lineWidth(0.5).stroke();
   doc.font("Helvetica-Bold").fontSize(7.5).fillColor(colors.muted).text("NEXUS AML · INTERNAL TASK PORTAL", 36, 16, { lineBreak: false });
-  doc.font("Helvetica").fontSize(7.5).fillColor(colors.muted).text(`TASK 2 · ${index + 1}`, pageWidth - 95, pageHeight - 28, { width: 58, align: "right", lineBreak: false });
+  doc.font("Helvetica").fontSize(7.5).fillColor(colors.muted).text(`TASK 2 · ${index + 1}`, pageWidth - 130, pageHeight - 28, { width: 93, align: "right", lineBreak: false });
 }
 
 doc.end();

@@ -1,8 +1,18 @@
-# Task 2 — Next Iteration Design
+# Task 2: Next Iteration Design
 
 **Internal Task Portal · Nexus AML**
 
 This document proposes the workflow and delivery plan for adding shared task discovery, task details, evidence submission, and administrative approval to the released Part 1 portal.
+
+## Contents
+
+1. [Scope and working assumptions](#1-scope-and-working-assumptions)
+2. [Process flow map](#2-process-flow-map)
+3. [Proposed solution shape](#3-proposed-solution-shape)
+4. [Sprint implementation plan](#4-sprint-implementation-plan)
+5. [Dependency sequence and critical path](#5-dependency-sequence-and-critical-path)
+6. [Risks and mitigations](#6-risks-and-mitigations)
+7. [Definition of done](#7-definition-of-done)
 
 ## 1. Scope and working assumptions
 
@@ -18,13 +28,13 @@ This document proposes the workflow and delivery plan for adding shared task dis
 
 ### Proposed task states
 
-- **To do** — created and assigned, but work has not started.
-- **In progress** — the assignee is actively working.
-- **Blocked** — progress cannot continue; a reason is required.
-- **Pending review** — evidence has been submitted and is locked for review.
-- **Changes requested** — an admin rejected the submission with feedback.
-- **Completed** — an admin approved the evidence.
-- **Cancelled** — work is no longer required; evidence cannot be submitted.
+- **To do:** Created and assigned, but work has not started.
+- **In progress:** The assignee is actively working.
+- **Blocked:** Progress cannot continue; a reason is required.
+- **Pending review:** Evidence has been submitted and is locked for review.
+- **Changes requested:** An admin rejected the submission with feedback.
+- **Completed:** An admin approved the evidence.
+- **Cancelled:** Work is no longer required; evidence cannot be submitted.
 
 ## 2. Process flow map
 
@@ -32,20 +42,11 @@ This document proposes the workflow and delivery plan for adding shared task dis
 
 ```mermaid
 flowchart TD
-    create([Task created]) --> assign{"Active assignee selected?"}
-    assign -->|"No"| choose[Select an active user]
-    choose --> assign
-    assign -->|"Yes"| todo[To do]
-    todo --> work[Assignee starts work]
-    work --> blocked{"Work blocked?"}
-    blocked -->|"Yes"| record[Record blocker reason]
-    record --> resolve{"Resolve or reassign?"}
-    resolve --> work
-    blocked -->|"No"| ready{"Ready to submit?"}
-    ready -->|"No"| work
-    ready -->|"Yes"| upload[/Upload completion evidence/]
+    create([Task created]) --> assign[Assign active user]
+    assign --> work[Assignee works]
+    work --> upload[/Upload evidence/]
     upload --> valid{"File valid and stored?"}
-    valid -->|"No"| retry[Show error and retry]
+    valid -->|"No"| retry[Validation error: retry]
     retry --> upload
     valid -->|"Yes"| pending[Pending review]
     pending --> review[Admin reviews evidence]
@@ -53,16 +54,21 @@ flowchart TD
     approve -->|"Yes"| complete([Completed])
     approve -->|"No"| changes[Changes requested with comment]
     changes --> work
-    todo -.-> cancel([Cancelled])
-    work -.-> cancel
+    work --> blocked[Blocked: resolve or reassign]
+    blocked --> work
+    assign -->|"Authorized cancel"| cancel([Cancelled])
 
     classDef success fill:#CDF4D3,stroke:#3E9B4B
+    classDef active fill:#C2E5FF,stroke:#3DADFF
     classDef review fill:#DCCCFF,stroke:#874FFF
     classDef warning fill:#FFECBD,stroke:#FFC943
+    classDef error fill:#FFCDC2,stroke:#FF7556
     classDef terminal fill:#D9D9D9,stroke:#767676
+    class create,work active
     class complete success
-    class pending,review review
-    class blocked,record,changes,retry warning
+    class pending,review,approve review
+    class valid,blocked,changes warning
+    class retry error
     class cancel terminal
 ```
 
@@ -89,11 +95,11 @@ flowchart TD
 
 ### API and authorization boundaries
 
-- `GET /api/tasks?status=&assigneeId=` performs server-side, combinable filtering and returns only tasks visible in the current workspace.
-- `GET /api/tasks/:taskId` returns task, assignee, evidence metadata, review history, and activity permitted to the caller.
-- `POST /api/tasks/:taskId/evidence/upload-url` authorizes the assignee and returns a short-lived signed upload instruction.
-- `POST /api/tasks/:taskId/evidence` verifies the uploaded object and submits its metadata for review.
-- `POST /api/tasks/:taskId/reviews` is admin-only and accepts an approve or reject decision with an expected task version.
+- `GET /api/tasks?status=&assigneeId=`: Performs server-side, combinable filtering and returns only tasks visible in the current workspace.
+- `GET /api/tasks/:taskId`: Returns task, assignee, evidence metadata, review history, and activity permitted to the caller.
+- `POST /api/tasks/:taskId/evidence/upload-url`: Authorizes the assignee and returns a short-lived signed upload instruction.
+- `POST /api/tasks/:taskId/evidence`: Verifies the uploaded object and submits its metadata for review.
+- `POST /api/tasks/:taskId/reviews`: Accepts an admin-only approve or reject decision with an expected task version.
 - All authorization is enforced in route handlers or domain services. Hiding a button is never treated as access control.
 
 ### File security and operational controls
@@ -113,186 +119,234 @@ flowchart TD
 - The team has access to a non-production private object-storage bucket and a malware-scanning service or agreed substitute.
 - Story points indicate relative complexity, not elapsed time. Capacity should be adjusted after team estimation.
 
-### Sprint 1 — Shared work, assignment, and task details
+### Sprint 1: Shared work, assignment, and task details
 
 **Goal:** Users can discover relevant shared work, filter it, assign it, and open a secure task details screen.
 
-#### T2-01 — Define roles and authorization policy · 3 points
+#### T2-01: Define roles and authorization policy (3 points)
 
-Dependencies: none.
+**Dependencies**
+
+- None.
+
+**Implementation**
 
 - Add User and Admin roles with a centralized permission matrix.
 - Seed or document a safe first-admin mechanism.
 - Add route-level authorization tests for user, assignee, creator, admin, and unauthenticated callers.
 
-Acceptance criteria:
+**Acceptance criteria**
 
 - Permissions are defined once and reused by pages and APIs.
 - Unauthenticated requests return 401; authenticated but forbidden requests return 403.
 - A user cannot gain admin capability by changing request payloads or route parameters.
 
-#### T2-02 — Extend task and assignment schema · 5 points
+#### T2-02: Extend task and assignment schema (5 points)
 
-Dependencies: T2-01 policy decisions.
+**Dependencies**
+
+- T2-01 policy decisions.
+
+**Implementation**
 
 - Add assignee, creator, expanded status, and optimistic version fields through a reviewed Prisma migration.
 - Backfill existing Part 1 tasks to their creator as assignee and preserve current status where possible.
 - Add indexes for status, assignee, and combined filters.
 
-Acceptance criteria:
+**Acceptance criteria**
 
 - Migration applies to a representative copy of production data and has a documented rollback or forward-fix plan.
 - Existing tasks remain accessible after migration.
 - Invalid state and assignment values are rejected by validation and the domain service.
 
-#### T2-03 — Add assignment workflow · 3 points
+#### T2-03: Add assignment workflow (3 points)
 
-Dependencies: T2-01, T2-02.
+**Dependencies**
+
+- T2-01 and T2-02.
+
+**Implementation**
 
 - Add active-user lookup and assignee selection to task create/edit flows.
 - Record assignment and reassignment in TaskActivity.
 - Prevent assignment to disabled or unknown users.
 
-Acceptance criteria:
+**Acceptance criteria**
 
 - Authorized users can assign or reassign a task to one active user.
 - Reassignment is visible on the task and in its activity history.
 - Unauthorized assignment attempts do not modify data.
 
-#### T2-04 — Implement server-side task filtering · 5 points
+#### T2-04: Implement server-side task filtering (5 points)
 
-Dependencies: T2-02.
+**Dependencies**
+
+- T2-02.
+
+**Implementation**
 
 - Add status and assignee query parameters to the task API and repository.
 - Add filter controls whose state is represented in the URL for refresh and sharing.
 - Define loading, empty, invalid-filter, and clear-filter behavior.
 
-Acceptance criteria:
+**Acceptance criteria**
 
 - Status and assignee filters work independently and together.
 - Refreshing or sharing the URL preserves the selected filters.
 - Filtering is performed in the database, not on an already-truncated client list.
 - Invalid filter values produce a controlled 400 response.
 
-#### T2-05 — Build the task details screen · 5 points
+#### T2-05: Build the task details screen (5 points)
 
-Dependencies: T2-02, T2-03.
+**Dependencies**
+
+- T2-02 and T2-03.
+
+**Implementation**
 
 - Add `/tasks/[taskId]` with task data, assignee, status, evidence area, and activity timeline placeholders.
 - Link list rows to the details route and preserve filter context on return.
 - Add not-found and forbidden states without leaking whether an inaccessible task exists.
 
-Acceptance criteria:
+**Acceptance criteria**
 
 - Selecting a task opens a dedicated, directly addressable details page.
 - The page is server-authorized and renders the latest task version.
 - Keyboard navigation, focus states, headings, and breadcrumbs meet the existing accessibility standard.
 
-#### Sprint 1 quality and release work · 5 points
+#### Sprint 1 quality and release work (5 points)
 
-Dependencies: T2-01 through T2-05.
+**Dependencies**
+
+- T2-01 through T2-05.
+
+**Implementation**
 
 - Add repository, API integration, and browser tests for assignment, filters, and details.
 - Review query plans and pagination behavior with representative task volume.
 - Release behind a feature flag and monitor authorization failures and API latency.
 
-Sprint 1 exit criteria:
+**Sprint 1 exit criteria**
 
 - Product accepts assignment, combined filtering, and task-details journeys.
 - Security tests pass for all defined roles.
 - Migration and rollback rehearsal completes in staging.
 
-### Sprint 2 — Evidence submission and admin approval
+### Sprint 2: Evidence submission and admin approval
 
 **Goal:** An assignee can submit secure evidence and an admin can approve or reject completion with a complete audit history.
 
-#### T2-06 — Provision private evidence storage · 5 points
+#### T2-06: Provision private evidence storage (5 points)
 
-Dependencies: approved file policy and infrastructure access.
+**Dependencies**
+
+- Approved file policy and infrastructure access.
+
+**Implementation**
 
 - Configure private storage, encryption, lifecycle rules, CORS, service identity, and environment configuration.
 - Integrate malware scanning or define a quarantine-and-release mechanism.
 - Add operational documentation for failed scans and orphaned uploads.
 
-Acceptance criteria:
+**Acceptance criteria**
 
 - Objects cannot be listed or fetched publicly.
 - Upload and download permissions expire quickly and are scoped to one object.
 - A failed scan cannot be submitted for review.
 
-#### T2-07 — Implement authorized evidence upload · 5 points
+#### T2-07: Implement authorized evidence upload (5 points)
 
-Dependencies: T2-01, T2-05, T2-06.
+**Dependencies**
+
+- T2-01, T2-05, and T2-06.
+
+**Implementation**
 
 - Add upload authorization and completion endpoints.
 - Validate size, type, signature, checksum, task state, and current assignee.
 - Show progress, retry, cancel, and validation errors on the details screen.
 
-Acceptance criteria:
+**Acceptance criteria**
 
 - Only the current assignee can upload evidence for an eligible task.
 - Invalid or oversized files are rejected without creating usable evidence records.
 - Refreshing after a successful upload shows the same evidence metadata.
 
-#### T2-08 — Add submission and workflow transitions · 5 points
+#### T2-08: Add submission and workflow transitions (5 points)
 
-Dependencies: T2-02, T2-07.
+**Dependencies**
+
+- T2-02 and T2-07.
+
+**Implementation**
 
 - Implement allowed state transitions in a domain service rather than directly in UI handlers.
 - Submit verified evidence and transition to Pending review transactionally.
 - Support a new evidence version after Changes requested while retaining earlier versions.
 
-Acceptance criteria:
+**Acceptance criteria**
 
 - A task without verified evidence cannot enter Pending review.
 - Submitted evidence cannot be silently overwritten during review.
 - Concurrent stale updates receive a conflict response and do not overwrite newer work.
 
-#### T2-09 — Build admin review queue and decision flow · 8 points
+#### T2-09: Build admin review queue and decision flow (8 points)
 
-Dependencies: T2-01, T2-05, T2-08.
+**Dependencies**
+
+- T2-01, T2-05, and T2-08.
+
+**Implementation**
 
 - Add an admin-only Pending review queue and evidence viewer/download action.
 - Implement approval and rejection; require a comment for rejection.
 - Complete approval, Review creation, TaskActivity creation, and status transition in one transaction.
 
-Acceptance criteria:
+**Acceptance criteria**
 
 - Non-admin callers receive 403 from every review endpoint.
 - Approval is idempotent and is the only normal route to Completed.
 - Rejection returns the task to Changes requested with visible feedback.
 - The UI prevents double submission and handles version conflicts clearly.
 
-#### T2-10 — Complete audit, notifications, and observability · 3 points
+#### T2-10: Complete audit, notifications, and observability (3 points)
 
-Dependencies: T2-03, T2-08, T2-09.
+**Dependencies**
+
+- T2-03, T2-08, and T2-09.
+
+**Implementation**
 
 - Present a chronological activity timeline for assignment, submission, and review.
 - Add in-app notifications for assignment, rejection, and approval; external email is a follow-up unless requested.
 - Add structured logs and metrics for upload failures, scan failures, review outcomes, and authorization denials.
 
-Acceptance criteria:
+**Acceptance criteria**
 
 - Every workflow transition records actor, timestamp, prior state, and new state.
 - Review comments and evidence versions remain traceable.
 - Support staff can correlate a failed UI action with a server request without exposing sensitive file data in logs.
 
-#### T2-11 — Security, accessibility, and release validation · 5 points
+#### T2-11: Security, accessibility, and release validation (5 points)
 
-Dependencies: T2-06 through T2-10.
+**Dependencies**
+
+- T2-06 through T2-10.
+
+**Implementation**
 
 - Add end-to-end happy paths and rejection/resubmission paths.
 - Test horizontal access attempts, malicious files, expired links, repeated decisions, and concurrent review.
 - Complete accessibility review for filters, upload progress, dialogs, evidence links, and decision feedback.
 - Rehearse migration, storage configuration, feature-flag rollout, and rollback in staging.
 
-Acceptance criteria:
+**Acceptance criteria**
 
 - Critical workflows pass in supported browsers and keyboard-only navigation.
 - No uploaded object is public and no signed URL is persisted or logged.
 - Product, engineering, QA, and security owners approve the release checklist.
 
-Sprint 2 exit criteria:
+**Sprint 2 exit criteria**
 
 - The end-to-end create-to-approval flow is accepted in staging.
 - Audit records reconcile with all tested state transitions.
